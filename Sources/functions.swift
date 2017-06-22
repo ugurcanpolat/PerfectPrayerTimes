@@ -134,6 +134,7 @@ func retryEntriesWithError()
                 allDatas.updateValue(times, forKey: uuid!)
                 print("Data is gathered for: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
                 saveToJSONFile(uuid: entry["uuid"] as! String)
+                entriesWithError.removeFirst()
                 retryGroup.leave()
             }
         }
