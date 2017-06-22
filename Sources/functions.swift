@@ -22,10 +22,11 @@ var allDatas = Dictionary<NSUUID, Dictionary<String, prayerTimes>>()
 var entriesWithError = [Dictionary<String, Any>]()
 var allDays = [String]()
 
+let retryGroup = DispatchGroup()
+
 // Create an ephemeral session to get datas without cache
 let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
 
-var semaphore = DispatchSemaphore(value: 0)
 
 func readJSONFileAndGetParameters()
 {
@@ -93,15 +94,24 @@ func readJSONFileAndGetParameters()
             }
         }
     }
-    retryEntriesWithError()
-    semaphore.wait()
-    print("Datas have been successfully gathered.")
+
+    // If there are entries with error, retry them
+    if entriesWithError.isEmpty == false {
+        retryEntriesWithError()
+        
+        // Wait retryEntriesWithError function to finish its job (dispatch groups)
+        retryGroup.wait()
+        print("Datas have been successfully gathered.")
+    }
 }
 
 func retryEntriesWithError()
 {
     print("RETRYING TO GET DATA FOR ENTRIES WITH ERRORS")
+
     for entry in entriesWithError {
+        // Enter a dispatch queue to track the status of all entries
+        retryGroup.enter()
         print("Retrying: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
         getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
             if status == true {
@@ -113,10 +123,10 @@ func retryEntriesWithError()
                 print("Data is gathered for: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
                 saveToJSONFile(uuid: entry["uuid"] as! String)
                 entriesWithError.removeFirst()
+                retryGroup.leave()
             }
         }
     }
-    semaphore.signal()
 }
 
 func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html: String?, _ isCompleted: Bool)->())
@@ -208,7 +218,7 @@ func saveToJSONFile(uuid: String) {
         datas.updateValue(time.yatsi!,  forKey: "yatsi")
         datas.updateValue(time.kible!,  forKey: "kible")
         
-        guard var saveDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        guard var saveDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { allDays.removeAll(); return }
         
         // Convert date format to "yyyy.MM.dd" from "dd.MM.yyyy"
         let dateFormatter = DateFormatter()
