@@ -10,89 +10,120 @@ import Foundation
 import PerfectLib
 import PerfectHTTP
 import PerfectHTTPServer
-import PerfectThread
-import Kanna
+import PerfectThread // Multithread tasks
+import Kanna // HTML Parsing
 
+// Global variables for current city ID info
 var countryId: Int?
 var stateId:   Int?
 var countyId:  Int?
 
 var allDatas = Dictionary<NSUUID, Dictionary<String, prayerTimes>>()
+var entriesWithError = [Dictionary<String, Any>]()
 var allDays = [String]()
 
+// Create an ephemeral session to get datas without cache
 let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
 
-var dataTaskQueue = Threading.getQueue(type: Threading.QueueType.concurrent)
-var tasks = [URLSessionDataTask]()
+var semaphore = DispatchSemaphore(value: 0)
 
 func readJSONFileAndGetParameters()
 {
+    let filePath = "/Users/ugurcanpolat/Downloads/CountryDetailedList.json"
     var arrayOfCountries = [[String: Any]]()
     
-    let path2: String? = "/Users/ugurcanpolat/Downloads/CountryDetailedList.json"
+    do {
+        let data = try Data(contentsOf: URL(fileURLWithPath: filePath), options: .alwaysMapped)
+        arrayOfCountries = try JSONSerialization.jsonObject(with: data, options: []) as! [[String:Any]]
+    } catch let error {
+        print(error)
+        return
+    }
     
-    if let path = path2 {
-        //if let path = Bundle.main.path(forResource: "CountryDetailedList", ofType: "json") {
-        do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: path), options: .alwaysMapped)
-            arrayOfCountries = try! JSONSerialization.jsonObject(with: data, options: []) as! [[String:Any]]
-            
-            for country in arrayOfCountries {
-                let name = country["CountryName"] as? String
-                let displayName = country["CountryDisplayName"] as? String
-                let id = country["CountryId"] as? Int
-                var arrayOfCities: [[String: Any]] = country["Cities"] as! [[String : Any]]
-                let countryObj = Country(name: name!, displayName: displayName!, id: id!, cities: arrayOfCities)
+    for country in arrayOfCountries {
+        let name = country["CountryName"] as? String
+        let displayName = country["CountryDisplayName"] as? String
+        let id = country["CountryId"] as? Int
+        let arrayOfCities: [[String: Any]] = country["Cities"] as! [[String : Any]]
+        let countryObj = Country(name: name!, displayName: displayName!, id: id!, cities: arrayOfCities)
+        
+        countryId = countryObj.countryId!
+        for city in countryObj.citiesOfCountry! {
+            stateId = city["CityId"] as? Int
+            let arrayOfCounties: [[String: Any]] = city["Counties"] as! [[String : Any]]
+            for var county in arrayOfCounties {
+                countyId = county["CountyId"] as? Int
                 
-                arrayOfCities.removeAll()
-                countryId = countryObj.countryId!
-                for city in countryObj.citiesOfCountry! {
-                    stateId = city["CityId"] as? Int
-                    let arrayOfCounties: [[String: Any]] = city["Counties"] as! [[String : Any]]
-                    for var county in arrayOfCounties {
-                        countyId = county["CountyId"] as? Int
+                if countyId == 0 {
+                    countyId = stateId
+                }
+                
+                getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
+                    if status == false {
+                        var errorEntry = Dictionary<String, Any>()
+                        errorEntry.updateValue(countryId!, forKey: "CountryId")
+                        errorEntry.updateValue(stateId!, forKey: "StateId")
+                        errorEntry.updateValue(countyId!, forKey: "CityId")
+                        errorEntry.updateValue(country["CountryName"]!, forKey: "CountryName")
+                        errorEntry.updateValue(county["uuid"]!, forKey: "uuid")
                         
-                        if countyId == 0 {
-                            countyId = stateId
+                        if county["CountyName"] as? String == "No County" {
+                            print("Error: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
+                            errorEntry.updateValue(city["CityName"]!, forKey: "CountyName")
+                        } else {
+                            print("Error: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
+                            errorEntry.updateValue(county["CountyName"]!, forKey: "CountyName")
                         }
-                        
-                        getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
-                            if status == false {
-                                if county["CountyName"] as? String == "No County" {
-                                    print("Retrying: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
-                                } else {
-                                    print("Retrying: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
-                                }
-                                return
-                            }
-                            // Parse html and get Dictionary of 'Aylik' prayer times
-                            var times: Dictionary<String, prayerTimes> = parseAylik(html)
-                            let uuid = NSUUID(uuidString: county["uuid"] as! String)
-                            allDatas.updateValue(times, forKey: uuid!)
-                            times.removeAll()
-                            if county["CountyName"] as? String == "No County" {
-                                print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
-                            } else {
-                                print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
-                            }
-                            saveToJSONFile(uuid: county["uuid"] as! String)
-                        }
+                        entriesWithError.append(errorEntry)
+                        return
                     }
+                    
+                    // Parse html and get Dictionary of 'Aylik' prayer times
+                    let times: Dictionary<String, prayerTimes> = parseAylik(html)
+                    let uuid = NSUUID(uuidString: county["uuid"] as! String)
+                    // Store prayer times in the dictionary for specific UUID key
+                    allDatas.updateValue(times, forKey: uuid!)
+                    if county["CountyName"] as? String == "No County" {
+                        print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
+                    } else {
+                        print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
+                    }
+                    saveToJSONFile(uuid: county["uuid"] as! String)
                 }
             }
-        } catch let error {
-            print(error)
         }
-    } else {
-        print("Invalid filename/path.")
     }
+    retryEntriesWithError()
+    semaphore.wait()
+    print("Datas have been successfully gathered.")
+}
+
+func retryEntriesWithError()
+{
+    print("RETRYING TO GET DATA FOR ENTRIES WITH ERRORS")
+    for entry in entriesWithError {
+        print("Retrying: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
+        getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
+            if status == true {
+                // Parse html and get Dictionary of 'Aylik' prayer times
+                let times: Dictionary<String, prayerTimes> = parseAylik(html)
+                let uuid = NSUUID(uuidString: entry["uuid"] as! String)
+                // Store prayer times in the dictionary for specific UUID key
+                allDatas.updateValue(times, forKey: uuid!)
+                print("Data is gathered for: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
+                saveToJSONFile(uuid: entry["uuid"] as! String)
+                entriesWithError.removeFirst()
+            }
+        }
+    }
+    semaphore.signal()
 }
 
 func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html: String?, _ isCompleted: Bool)->())
 {
     var request = URLRequest(url: URL(string: url)!)
     request.httpMethod = "POST"
-    // parameters for country, state and city
+    // Parameters for country, state and city to send POST request
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
     var parametersString = "Country=\(countryId ?? 0)&"
     parametersString.append("State=\(stateId ?? 0)&")
@@ -102,13 +133,13 @@ func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html
     Threading.dispatch {
         let task = session.dataTask(with: request) { (data, response, error) in
             guard let data = data, error == nil else {
-                // check for fundamental networking error
+                // Check for fundamental networking errors
                 completionHandler(nil, false)
                 return
             }
             
             if let httpStatus = response as? HTTPURLResponse, httpStatus.statusCode != 200 {
-                // check for http errors
+                // Check for http errors
                 completionHandler(nil, false)
                 return
             }
@@ -117,8 +148,8 @@ func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html
             
             completionHandler(responseString, true)
         }
+        // Resume the task since it is in the suspended state when it is created
         task.resume()
-        tasks.append(task)
     }
     Threading.sleep(seconds: 0.15)
 }
@@ -207,9 +238,7 @@ func saveToJSONFile(uuid: String) {
         } catch {
             print(error)
         }
-        datas.removeAll()
     }
-    times.removeAll()
+    // Remove allDays array since it is created for every city.
     allDays.removeAll()
 }
-
