@@ -48,7 +48,7 @@ func readJSONFileAndGetParameters()
                 countryId = countryObj.countryId!
                 for city in countryObj.citiesOfCountry! {
                     stateId = city["CityId"] as? Int
-                    var arrayOfCounties: [[String: Any]] = city["Counties"] as! [[String : Any]]
+                    let arrayOfCounties: [[String: Any]] = city["Counties"] as! [[String : Any]]
                     for var county in arrayOfCounties {
                         countyId = county["CountyId"] as? Int
                         
@@ -56,31 +56,27 @@ func readJSONFileAndGetParameters()
                             countyId = stateId
                         }
                         
-                        var condition = true
-                        //while condition {
-                            getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
-                                if status == false {
-                                    if county["CountyName"] as? String == "No County" {
-                                        print("Retrying: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
-                                    } else {
-                                        print("Retrying: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
-                                    }
-                                    return
-                                }
-                                // Parse html and get Dictionary of 'Aylik' prayer times
-                                var times: Dictionary<String, prayerTimes> = parseAylik(html)
-                                let uuid = NSUUID(uuidString: county["uuid"] as! String)
-                                allDatas.updateValue(times, forKey: uuid!)
-                                times.removeAll()
+                        getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
+                            if status == false {
                                 if county["CountyName"] as? String == "No County" {
-                                    print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
+                                    print("Retrying: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
                                 } else {
-                                    print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
+                                    print("Retrying: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
                                 }
-                                saveToJSONFile(uuid: county["uuid"] as! String)
-                                condition = false
+                                return
                             }
-                        //}
+                            // Parse html and get Dictionary of 'Aylik' prayer times
+                            var times: Dictionary<String, prayerTimes> = parseAylik(html)
+                            let uuid = NSUUID(uuidString: county["uuid"] as! String)
+                            allDatas.updateValue(times, forKey: uuid!)
+                            times.removeAll()
+                            if county["CountyName"] as? String == "No County" {
+                                print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(city["CityName"] ?? "Error!!!")")
+                            } else {
+                                print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
+                            }
+                            saveToJSONFile(uuid: county["uuid"] as! String)
+                        }
                     }
                 }
             }
