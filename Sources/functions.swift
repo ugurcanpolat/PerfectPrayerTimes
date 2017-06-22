@@ -28,7 +28,7 @@ let retryGroup = DispatchGroup()
 // Create an ephemeral session to get datas without cache
 let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
 
-func readJSONFileAndGetParameters(filePath: String)
+func readJSONFileAndGetPrayerTimes(filePath: String)
 {
     var arrayOfCountries = [[String: Any]]()
     
@@ -59,7 +59,7 @@ func readJSONFileAndGetParameters(filePath: String)
                 }
                 
                 generalGroup.enter()
-                getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
+                getUnparsedAylik("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
                     if status == false {
                         var errorEntry = Dictionary<String, Any>()
                         errorEntry.updateValue(countryId!, forKey: "CountryId")
@@ -127,7 +127,7 @@ func retryEntriesWithError()
         // Enter a dispatch queue to track the status of all entries
         retryGroup.enter()
         print("Retrying: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
-        getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
+        getUnparsedAylik("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
             if status == true {
                 // Parse html and get Dictionary of 'Aylik' prayer times
                 let times: Dictionary<String, prayerTimes> = parseAylik(html)
@@ -142,7 +142,7 @@ func retryEntriesWithError()
     }
 }
 
-func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html: String?, _ isCompleted: Bool)->())
+func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String?, _ isCompleted: Bool)->())
 {
     var request = URLRequest(url: URL(string: url)!)
     request.httpMethod = "POST"
@@ -174,13 +174,14 @@ func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html
         // Resume the task since it is in the suspended state when it is created
         task.resume()
     }
-    // Give some time threads to finish data loading. 0.15 seconds is optimal value to avoid
+    // Give some time to threads finish data loading. 0.15 seconds is optimal value to avoid
     // getting blocked because of exceeding allowed number of requests per time.
     Threading.sleep(seconds: 0.15)
 }
 
 func parseAylik(_ html: String?) -> Dictionary<String, prayerTimes>
 {
+    // Dictionary of all prayer times with key of day
     var allTimes = Dictionary<String, prayerTimes>()
     
     if let doc = HTML(html: html!, encoding: .utf8) {
@@ -190,12 +191,14 @@ func parseAylik(_ html: String?) -> Dictionary<String, prayerTimes>
         var times: [String] = [String]()
         if let inputNodes = bodyNode?.xpath("//td") {
             for node in inputNodes {
+                // First node is always day
                 if count == 1 {
                     day = node.content!
                     allDays.append(day)
                     count += 1
                 } else if count == 8 {
                     times.append(node.content!)
+                    // Construct a prayerTimes object that stores prayer times for day
                     let prayerTime = prayerTimes(times: times)
                     allTimes.updateValue(prayerTime, forKey: day)
                     times.removeAll()
@@ -211,7 +214,9 @@ func parseAylik(_ html: String?) -> Dictionary<String, prayerTimes>
 }
 
 func saveToJSONFile(uuid: String) {
+    // Get prayer times for a specific UUID
     var times: Dictionary<String, prayerTimes> = allDatas[NSUUID(uuidString: uuid)!]!
+    // This dictionary will be used to get JSON file
     var datas = Dictionary<String, String>()
     
     if times.isEmpty {
