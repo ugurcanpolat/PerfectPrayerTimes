@@ -4,5 +4,6 @@ import PerfectHTTP
 import PerfectHTTPServer
 import Kanna
 
-readJSONFileAndGetParameters()
+let filePath = "/Users/ugurcanpolat/Downloads/CountryDetailedList.json"
+readJSONFileAndGetParameters(filePath: filePath)
 

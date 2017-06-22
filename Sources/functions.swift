@@ -22,15 +22,14 @@ var allDatas = Dictionary<NSUUID, Dictionary<String, prayerTimes>>()
 var entriesWithError = [Dictionary<String, Any>]()
 var allDays = [String]()
 
+let generalGroup = DispatchGroup()
 let retryGroup = DispatchGroup()
 
 // Create an ephemeral session to get datas without cache
 let session = URLSession(configuration: URLSessionConfiguration.ephemeral)
 
-
-func readJSONFileAndGetParameters()
+func readJSONFileAndGetParameters(filePath: String)
 {
-    let filePath = "/Users/ugurcanpolat/Downloads/CountryDetailedList.json"
     var arrayOfCountries = [[String: Any]]()
     
     do {
@@ -59,6 +58,7 @@ func readJSONFileAndGetParameters()
                     countyId = stateId
                 }
                 
+                generalGroup.enter()
                 getUnparsedAylikAndParse("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
                     if status == false {
                         var errorEntry = Dictionary<String, Any>()
@@ -76,6 +76,7 @@ func readJSONFileAndGetParameters()
                             errorEntry.updateValue(county["CountyName"]!, forKey: "CountyName")
                         }
                         entriesWithError.append(errorEntry)
+                        generalGroup.leave()
                         return
                     }
                     
@@ -90,6 +91,7 @@ func readJSONFileAndGetParameters()
                         print("Data is gathered for: \(country["CountryName"] ?? "Error!!!")/\(county["CountyName"] ?? "Error!!!")")
                     }
                     saveToJSONFile(uuid: county["uuid"] as! String)
+                    generalGroup.leave()
                 }
             }
         }
@@ -101,8 +103,20 @@ func readJSONFileAndGetParameters()
         
         // Wait retryEntriesWithError function to finish its job (dispatch groups)
         retryGroup.wait()
+    }
+    // Wait all dataTask operations to finish
+    generalGroup.wait()
+    
+    if entriesWithError.isEmpty == false {
+        print("Datas have been successfully gathered except:")
+        for entry in entriesWithError {
+            print("Fail: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
+        }
+    } else {
         print("Datas have been successfully gathered.")
     }
+    
+    print("All jobs are done.")
 }
 
 func retryEntriesWithError()
@@ -122,7 +136,6 @@ func retryEntriesWithError()
                 allDatas.updateValue(times, forKey: uuid!)
                 print("Data is gathered for: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
                 saveToJSONFile(uuid: entry["uuid"] as! String)
-                entriesWithError.removeFirst()
                 retryGroup.leave()
             }
         }
@@ -161,6 +174,8 @@ func getUnparsedAylikAndParse(_ url:String, completionHandler: @escaping (_ html
         // Resume the task since it is in the suspended state when it is created
         task.resume()
     }
+    // Give some time threads to finish data loading. 0.15 seconds is optimal value to avoid
+    // getting blocked because of exceeding allowed number of requests per time.
     Threading.sleep(seconds: 0.15)
 }
 
