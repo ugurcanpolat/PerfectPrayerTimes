@@ -106,7 +106,7 @@ func readJSONFileAndGetPrayerTimes(filePath: String)
     generalGroup.wait()
     
     if entriesWithError.isEmpty == false {
-        print("Datas have been successfully gathered except:")
+        print("Datas have been gathered except:")
         for entry in entriesWithError {
             print("Fail: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
         }
@@ -135,8 +135,8 @@ func retryEntriesWithError()
                 print("Data is gathered for: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
                 saveToJSONFile(uuid: entry["uuid"] as! String)
                 entriesWithError.removeFirst()
-                retryGroup.leave()
             }
+            retryGroup.leave()
         }
     }
 }
