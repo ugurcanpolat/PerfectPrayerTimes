@@ -16,6 +16,10 @@ var countryId: Int?
 var stateId:   Int?
 var countyId:  Int?
 
+// 0.15 is optimal value to avoid getting blocked because of exceeding
+// allowed number of requests per time.
+var sleepTime: Double = 0.10
+
 var allDatas = Dictionary<NSUUID, Dictionary<String, prayerTimes>>()
 var entriesWithError = [Dictionary<String, Any>]()
 var allDays = [String]()
@@ -173,9 +177,10 @@ func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String
         // Resume the task since it is in the suspended state when it is created
         task.resume()
     }
-    // Give some time to threads finish data loading. 0.15 seconds is optimal value to avoid
+    
+    // Give some time to threads finish their job. 0.15 is optimal value to avoid
     // getting blocked because of exceeding allowed number of requests per time.
-    Threading.sleep(seconds: 0.15)
+    Threading.sleep(seconds: sleepTime)
 }
 
 func parseAylik(_ html: String?) -> Dictionary<String, prayerTimes>
