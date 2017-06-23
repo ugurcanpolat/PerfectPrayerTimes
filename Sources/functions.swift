@@ -260,10 +260,9 @@ func saveToJSONFile(uuid: String) {
             
             if FileManager.default.fileExists(atPath: fileUrl.path) {
                 times.removeAll()
-                allDays.removeAll()
-                return
+            } else {
+                try data.write(to: fileUrl, options: [])
             }
-            try data.write(to: fileUrl, options: [])
         } catch {
             print(error)
         }
