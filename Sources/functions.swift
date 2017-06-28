@@ -165,7 +165,7 @@ func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String
             }
             
             if let httpStatus = response as? HTTPURLResponse, httpStatus.statusCode != 200 {
-                // Check for http errors
+                // Check for HTTP errors
                 completionHandler(nil, false)
                 return
             }
@@ -178,7 +178,7 @@ func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String
         task.resume()
     }
     
-    // Give some time to threads finish their job. 0.15 is optimal value to avoid
+    // Give some time to threads to finish their job. 0.15 is optimal value to avoid
     // getting blocked because of exceeding allowed number of requests per time.
     Threading.sleep(seconds: sleepTime)
 }
@@ -241,7 +241,7 @@ func saveToJSONFile(uuid: String) {
         datas.updateValue(time.aksam!,  forKey: "aksam")
         datas.updateValue(time.yatsi!,  forKey: "yatsi")
         datas.updateValue(time.kible!,  forKey: "kible")
-        
+
         guard var saveDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { allDays.removeAll(); return }
         
         // Convert date format to "yyyy.MM.dd" from "dd.MM.yyyy"
