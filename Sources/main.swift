@@ -1,5 +1,5 @@
 import Foundation
 
 let filePath = Bundle.main.path(forResource: "Resources/CountryDetailedList", ofType: "json")
-
-readJSONFileAndGetPrayerTimes(filePath: filePath!)
+let defaultPath = "./Resources/CountryDetailedList.json"
+readJSONFileAndGetPrayerTimes(filePath: filePath ?? defaultPath)
