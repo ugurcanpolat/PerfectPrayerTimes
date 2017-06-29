@@ -61,8 +61,8 @@ func readJSONFileAndGetPrayerTimes(filePath: String)
                 }
                 
                 generalGroup.enter()
-                getUnparsedAylik("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
-                    if status == false {
+                getUnparsedAylik("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { html in
+                    if html == nil {
                         var errorEntry = Dictionary<String, Any>()
                         errorEntry.updateValue(countryId!, forKey: "CountryId")
                         errorEntry.updateValue(stateId!, forKey: "StateId")
@@ -129,8 +129,8 @@ func retryEntriesWithError()
         // Enter a dispatch queue to track the status of all entries
         retryGroup.enter()
         print("Retrying: \(entry["CountryName"] ?? "Error!!!")/\(entry["CountyName"] ?? "Error!!!")")
-        getUnparsedAylik("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { (html, status) in
-            if status == true {
+        getUnparsedAylik("http://www.diyanet.gov.tr/tr/PrayerTime/PrayerTimesList") { html in
+            if html != nil {
                 // Parse html and get Dictionary of 'Aylik' prayer times
                 let times: Dictionary<String, prayerTimes> = parseAylik(html)
                 let uuid = NSUUID(uuidString: entry["uuid"] as! String)
@@ -145,7 +145,7 @@ func retryEntriesWithError()
     }
 }
 
-func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String?, _ isCompleted: Bool)->())
+func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String?)->())
 {
     var request = URLRequest(url: URL(string: url)!)
     request.httpMethod = "POST"
@@ -160,19 +160,19 @@ func getUnparsedAylik(_ url:String, completionHandler: @escaping (_ html: String
         let task = session.dataTask(with: request) { (data, response, error) in
             guard let data = data, error == nil else {
                 // Check for fundamental networking errors
-                completionHandler(nil, false)
+                completionHandler(nil)
                 return
             }
             
             if let httpStatus = response as? HTTPURLResponse, httpStatus.statusCode != 200 {
                 // Check for HTTP errors
-                completionHandler(nil, false)
+                completionHandler(nil)
                 return
             }
             // Data is as format of html for period=Aylik
             let responseString = String(data: data, encoding: .utf8)
             
-            completionHandler(responseString, true)
+            completionHandler(responseString)
         }
         // Resume the task since it is in the suspended state when it is created
         task.resume()
